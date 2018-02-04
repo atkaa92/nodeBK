@@ -3,9 +3,20 @@ const router = express.Router();
 
 //BringIn Models
 let Article = require('../models/article');
+let User = require('../models/user');
+
+//Access Control
+function ensureAuthenticated(req, res, next){
+    if(req.isAuthenticated()){
+        return next()
+    }else{
+        req.flash('danger', 'Please login');
+        res.redirect('/users/login');
+    }
+}
 
 //Add Get Route
-router.get('/add', (req, res)=>{
+router.get('/add', ensureAuthenticated, (req, res)=>{
     res.render('add_article', {
         title:'Add Article'
     })
@@ -14,15 +25,22 @@ router.get('/add', (req, res)=>{
 //Get Single Article Route
 router.get('/:id', (req, res)=>{
     Article.findById(req.params.id, (err, article)=>{
-        res.render('article', {
-            article:article
+        User.findById(article.auther, (err, user)=>{
+            res.render('article', {
+                article:article,
+                auther : user.name
+            })
         })
     })
 })
 
 //Get Edit Article Route
-router.get('/edit/:id', (req, res)=>{
+router.get('/edit/:id', ensureAuthenticated, (req, res)=>{
     Article.findById(req.params.id, (err, article)=>{
+        if (article.auther != req.user._id) {
+            req.flash('danger', 'Not Autherized.');
+            res.redirect('/');
+        }
         res.render('edit_article', {
         title:'Edit Article',
         article:article,
@@ -31,9 +49,9 @@ router.get('/edit/:id', (req, res)=>{
 })
 
 //Add Article Route
-router.post('/add', (req, res)=>{
+router.post('/add', ensureAuthenticated, (req, res)=>{
     req.checkBody('title', 'Title is required').notEmpty();
-    req.checkBody('auther', 'Auther is required').notEmpty();
+    // req.checkBody('auther', 'Auther is required').notEmpty();
     req.checkBody('body', 'Body is required').notEmpty();
     let errors = req.validationErrors();
     if (errors) {
@@ -44,7 +62,7 @@ router.post('/add', (req, res)=>{
     }else{
         let article = new Article();
         article.title = req.body.title;
-        article.auther = req.body.auther;
+        article.auther = req.user._id;
         article.body = req.body.body;
         article.save((err)=>{
             if (err) {
@@ -59,7 +77,7 @@ router.post('/add', (req, res)=>{
 })
 
 //Update Article Route
-router.post('/edit/:id', (req, res)=>{
+router.post('/edit/:id', ensureAuthenticated, (req, res)=>{
     let article = {};
     article.title = req.body.title;
     article.auther = req.body.auther;
@@ -77,7 +95,10 @@ router.post('/edit/:id', (req, res)=>{
 })
 
 //Articel Delete Route
-router.delete('/:id', (req, res)=>{
+router.delete('/:id', ensureAuthenticated, (req, res)=>{
+    if(!req.user._id){
+        res.status(500).send();
+    }
     let query = {_id:req.params.id};
     Article.remove(query, (err)=>{
         if (err) {
